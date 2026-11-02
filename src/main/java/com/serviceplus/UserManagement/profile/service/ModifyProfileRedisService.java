@@ -37,13 +37,13 @@ public class ModifyProfileRedisService {
     private static final String KEY_PREFIX = "modifyProfileEmailOtp:";
     private static final String MOBILE_KEY_PREFIX = "modifyProfileMobileOtp:";
     private static final RedisScript<Long> COMPARE_AND_DELETE_SCRIPT = new DefaultRedisScript<>(
-            "local val = redis.call('get', KEYS[1])\\n" +
-            "if not val then return 0 end\\n" +
-            "local ok, data = pcall(cjson.decode, val)\\n" +
-            "if ok and type(data) == 'table' and data.otp == ARGV[1] then\\n" +
-            " return redis.call('del', KEYS[1])\\n" +
-            "end\\n" +
-            "return 0\\n", Long.class);
+            "local val = redis.call('get', KEYS[1])\n" +
+            "if not val then return 0 end\n" +
+            "local ok, data = pcall(cjson.decode, val)\n" +
+            "if ok and type(data) == 'table' and data.otp == ARGV[1] then\n" +
+            " return redis.call('del', KEYS[1])\n" +
+            "end\n" +
+            "return 0\n", Long.class);
 
     public void saveOtp(Long userId, String email, String otp) {
         try {
