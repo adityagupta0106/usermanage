@@ -21,6 +21,8 @@ public class BucketService {
 
 	private static final String REQUEST_BUCKET_PREFIX = "modifyProfileEmailRequestBucket:";
 	private static final String VERIFY_BUCKET_PREFIX = "modifyProfileEmailVerifyBucket:";
+    private static final String MOBILE_REQUEST_BUCKET_PREFIX = "modifyProfileMobileRequestBucket:";
+    private static final String MOBILE_VERIFY_BUCKET_PREFIX = "modifyProfileMobileVerifyBucket:";
 
 	@Value("${modify.profile.email.sms.request.limit}")
 	private Integer requestLimit;
@@ -75,4 +77,24 @@ public class BucketService {
                 .build();
         return proxyManager.builder().build(key(name), config);
     }
+    public Bucket getMobileOtpRequestBucket(Long userId) {
+        byte[] bucketKey = key(MOBILE_REQUEST_BUCKET_PREFIX + userId);
+        Supplier<BucketConfiguration> config = () -> BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder().capacity(requestLimit)
+                        .refillIntervally(requestLimit, Duration.ofMinutes(sessionValidityMin)).build()).build();
+        return proxyManager.builder().build(bucketKey, config);
+    }
+
+    public Bucket getMobileOtpVerifyBucket(Long userId) {
+        byte[] bucketKey = key(MOBILE_VERIFY_BUCKET_PREFIX + userId);
+        Supplier<BucketConfiguration> config = () -> BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder().capacity(totalOtpAttemps)
+                        .refillIntervally(totalOtpAttemps, Duration.ofMinutes(otpAttempsBlockTime)).build()).build();
+        return proxyManager.builder().build(bucketKey, config);
+    }
+
+    public void resetMobileVerifyBucket(Long userId) {
+        proxyManager.removeProxy(key(MOBILE_VERIFY_BUCKET_PREFIX + userId));
+    }
+
 }
