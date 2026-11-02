@@ -88,4 +88,19 @@ public class ModifyProfileController {
 		}
 	}
 
+    @PostMapping("/mobile/otp/request")
+    public ResponseEntity<?> requestMobileOtp(HttpServletRequest request, @RequestParam("mobileNo") String mobileNo) {
+        UserSessionObject user = Utility.getUserSessionDetails(request);
+        if (user == null) throw new SPRuntimeError("Unauthorized user", HttpStatus.FORBIDDEN);
+        return profileService.requestMobileOtp(request, user, user.getUserID(), mobileNo);
+    }
+
+    @PostMapping("/mobile/otp/verify")
+    public ResponseEntity<?> verifyMobileOtp(HttpServletRequest request,
+            @Valid @RequestBody ModifyEmailDTO otpDTO) {
+        UserSessionObject user = Utility.getUserSessionDetails(request);
+        if (user == null) throw new SPRuntimeError("Unauthorized user", HttpStatus.FORBIDDEN);
+        return profileService.verifyMobileOtp(user.getUserID(), otpDTO);
+    }
+
 }
