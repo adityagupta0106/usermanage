@@ -398,8 +398,10 @@ public class TrackingOtpService {
 
         }
 
-        // Separate read/compare/delete rejects sequential reuse, but is not atomic across concurrent requests.
-        redisService.deleteTrackingOtp(challengeId);
+        // Atomic Redis compare-and-delete: a challenge can authorize only one successful request.
+        if (!redisService.consumeTrackingOtp(challengeId, nonce, savedHash)) {
+            throw invalidOtp();
+        }
 
         Map<String, Object> verified = new HashMap<>();
 
