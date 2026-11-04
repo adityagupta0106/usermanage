@@ -13,91 +13,83 @@ import io.github.bucket4j.Bucket;
 import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
 
-/**
- * Distributed OTP rate limits. Each feature uses its own bucket key prefix,
- * while all features reuse one Bucket4j configuration method.
- */
 @Service
 public class BucketService {
 
-    private static final String EMAIL_REQUEST_PREFIX = "modifyProfileEmailRequestBucket:";
-    private static final String EMAIL_VERIFY_PREFIX = "modifyProfileEmailVerifyBucket:";
-    private static final String MOBILE_REQUEST_PREFIX = "modifyProfileMobileRequestBucket:";
-    private static final String MOBILE_VERIFY_PREFIX = "modifyProfileMobileVerifyBucket:";
+	@Autowired
+	private ProxyManager<byte[]> proxyManager;
+
+	private static final String REQUEST_BUCKET_PREFIX = "modifyProfileEmailRequestBucket:";
+	private static final String VERIFY_BUCKET_PREFIX = "modifyProfileEmailVerifyBucket:";
+
+	@Value("${modify.profile.email.sms.request.limit}")
+	private Integer requestLimit;
+	
+
+	@Value("${modify.profile.email.sms.session.validity.min}")
+	private Integer sessionValidityMin;
+
+	@Value("${modify.profile.email.sms.otp.attemps}")
+	private Integer totalOtpAttemps;
+	
+	@Value("${modify.profile.email.sms.otp.attemps.block.time}")
+	private Integer otpAttempsBlockTime;
+	
+	private byte[] key(String rawKey) {
+		return rawKey.getBytes(StandardCharsets.UTF_8);
+	}
+
+	public Bucket getOtpRequestBucket(Long userId) {
+		byte[] key = key(REQUEST_BUCKET_PREFIX + userId);
+		Supplier<BucketConfiguration> config = () -> BucketConfiguration.builder()
+				.addLimit(Bandwidth.builder().capacity(requestLimit).refillIntervally(requestLimit, Duration.ofMinutes(sessionValidityMin)).build()).build();
+		return proxyManager.builder().build(key, config);
+	}
+
+	public Bucket getOtpVerifyBucket(Long userId) {
+		byte[] key = key(VERIFY_BUCKET_PREFIX + userId);
+		Supplier<BucketConfiguration> config = () -> BucketConfiguration.builder()
+				.addLimit(Bandwidth.builder().capacity(totalOtpAttemps).refillIntervally(totalOtpAttemps, Duration.ofMinutes(otpAttempsBlockTime)).build()).build();
+		return proxyManager.builder().build(key, config);
+	}
+
+	public void resetVerifyBucket(Long userId) {
+		proxyManager.removeProxy(key(VERIFY_BUCKET_PREFIX + userId));
+	}
+	
     private static final String TRACKING_REQUEST_PREFIX = "trackingOtpRequestBucket:";
     private static final String TRACKING_VERIFY_PREFIX = "trackingOtpVerifyBucket:";
 
-    private final ProxyManager<byte[]> proxyManager;
-
-    // Keep existing configuration keys compatible with deployed environments.
-    @Value("${modify.profile.email.sms.request.limit}")
-    private Integer requestLimit;
-
-    @Value("${modify.profile.email.sms.session.validity.min}")
-    private Integer sessionValidityMin;
-
-    @Value("${modify.profile.email.sms.otp.attemps}")
-    private Integer totalOtpAttemps;
-
-    @Value("${modify.profile.email.sms.otp.attemps.block.time}")
-    private Integer otpAttempsBlockTime;
-
-    @Autowired
-    public BucketService(ProxyManager<byte[]> proxyManager) {
-        this.proxyManager = proxyManager;
+    public Bucket getTrackingRequestBucket(String identityKey) {
+        return trackingBucket(TRACKING_REQUEST_PREFIX + identityKey, requestLimit, sessionValidityMin);
     }
 
-    private byte[] key(String name) {
-        return name.getBytes(StandardCharsets.UTF_8);
+    public Bucket getTrackingVerifyBucket(String challengeId) {
+        return trackingBucket(TRACKING_VERIFY_PREFIX + challengeId, totalOtpAttemps, otpAttempsBlockTime);
     }
 
-    private Bucket createBucket(String name, Integer capacity, Integer refillMinutes) {
-        if (capacity == null || capacity < 1 || refillMinutes == null || refillMinutes < 1) {
-            throw new IllegalStateException("Invalid OTP rate-limit configuration");
-        }
-
+    private Bucket trackingBucket(String name, int capacity, int minutes) {
         Supplier<BucketConfiguration> config = () -> BucketConfiguration.builder()
-                .addLimit(Bandwidth.builder()
-                        .capacity(capacity)
-                        .refillIntervally(capacity, Duration.ofMinutes(refillMinutes))
-                        .build())
+                .addLimit(Bandwidth.builder().capacity(capacity)
+                        .refillIntervally(capacity, Duration.ofMinutes(minutes)).build())
                 .build();
-
         return proxyManager.builder().build(key(name), config);
     }
 
-    // Modify Profile: Email OTP
-    public Bucket getOtpRequestBucket(Long userId) {
-        return createBucket(EMAIL_REQUEST_PREFIX + userId, requestLimit, sessionValidityMin);
-    }
+    // Modify Profile: Mobile OTP (new feature only).
+    // Reuse existing Bucket4j helper; existing Email/Tracking methods stay unchanged.
+    private static final String MOBILE_REQUEST_PREFIX = "modifyProfileMobileRequestBucket:";
+    private static final String MOBILE_VERIFY_PREFIX = "modifyProfileMobileVerifyBucket:";
 
-    public Bucket getOtpVerifyBucket(Long userId) {
-        return createBucket(EMAIL_VERIFY_PREFIX + userId, totalOtpAttemps, otpAttempsBlockTime);
-    }
-
-    public void resetVerifyBucket(Long userId) {
-        proxyManager.removeProxy(key(EMAIL_VERIFY_PREFIX + userId));
-    }
-
-    // Modify Profile: Mobile OTP
     public Bucket getMobileOtpRequestBucket(Long userId) {
-        return createBucket(MOBILE_REQUEST_PREFIX + userId, requestLimit, sessionValidityMin);
+        return trackingBucket(MOBILE_REQUEST_PREFIX + userId, requestLimit, sessionValidityMin);
     }
 
     public Bucket getMobileOtpVerifyBucket(Long userId) {
-        return createBucket(MOBILE_VERIFY_PREFIX + userId, totalOtpAttemps, otpAttempsBlockTime);
+        return trackingBucket(MOBILE_VERIFY_PREFIX + userId, totalOtpAttemps, otpAttempsBlockTime);
     }
 
     public void resetMobileVerifyBucket(Long userId) {
         proxyManager.removeProxy(key(MOBILE_VERIFY_PREFIX + userId));
-    }
-
-    // Public Tracking: Email/Mobile OTP
-    public Bucket getTrackingRequestBucket(String identityKey) {
-        return createBucket(TRACKING_REQUEST_PREFIX + identityKey, requestLimit, sessionValidityMin);
-    }
-
-    public Bucket getTrackingVerifyBucket(String challengeId) {
-        return createBucket(TRACKING_VERIFY_PREFIX + challengeId, totalOtpAttemps, otpAttempsBlockTime);
     }
 }
